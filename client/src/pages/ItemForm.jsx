@@ -1,45 +1,226 @@
+
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
 
-// TODO: build the Report Item page — see README.md "Your task".
-// This page is already routed at /items/new (report) and /items/:id (edit),
-// and both routes are wrapped in <ProtectedRoute>.
-
-const defaults = { title: '', description: '', category: 'other', status: 'lost', location: '' }
+const defaults = {
+  title: '',
+  description: '',
+  category: 'other',
+  status: 'lost',
+  location: ''
+}
 
 export default function ItemForm() {
   const nav = useNavigate()
   const { id } = useParams()
+
   const [form, setForm] = useState(defaults)
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(Boolean(id))
+  const [saving, setSaving] = useState(false)
 
-  // TODO (edit mode): when there is an `id`, load the item and fill the form.
+  // Load existing item when editing
   useEffect(() => {
-    if (!id) return
-    // TODO
+    if (!id) {
+      setForm(defaults)
+      setLoading(false)
+      return
+    }
+
+    let cancelled = false
+
+    async function loadItem() {
+      setLoading(true)
+      setError('')
+
+      try {
+        const res = await api.get(`/items/${id}`)
+        const item = res.data.item
+
+        if (!cancelled) {
+          setForm({
+            title: item.title || '',
+            description: item.description || '',
+            category: item.category || 'other',
+            status: item.status || 'lost',
+            location: item.location || ''
+          })
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err.response?.data?.message || 'Failed to load item'
+          )
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    loadItem()
+
+    return () => {
+      cancelled = true
+    }
   }, [id])
 
-  // TODO: update `form` when an input changes.
+  // Update form state when typing or selecting
   function onChange(e) {
-    // TODO
+    const { name, value } = e.target
+
+    setForm(prev => ({
+      ...prev,
+      [name]: value
+    }))
   }
 
-  // TODO: POST a new item, or PATCH the existing one when editing,
-  // then go back to /items. Show the server's error message on failure.
+  // Create a new item or edit an existing one
   async function onSubmit(e) {
     e.preventDefault()
     setError('')
-    // TODO
+    setSaving(true)
+
+    try {
+      if (id) {
+        await api.patch(`/items/${id}`, form)
+      } else {
+        await api.post('/items', form)
+      }
+
+      nav('/items')
+    } catch (err) {
+      setError(
+        err.response?.data?.message || 'Failed to save item'
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return <p className="text-center mt-8">Loading item...</p>
   }
 
   return (
     <div className="max-w-lg mx-auto card">
-      <h1 className="text-xl font-semibold mb-4">{id ? 'Edit' : 'Report'} Item</h1>
-      <form onSubmit={onSubmit} className="space-y-3">
-        {/* TODO: title input, status select, category select, location input and description textarea */}
-        {error && <div className="text-red-600 text-sm">{error}</div>}
-        <button className="btn" type="submit">Save</button>
+      <h1 className="text-xl font-semibold mb-2">
+        {id ? 'Edit Item' : 'Report an Item'}
+      </h1>
+
+      <p className="text-gray-500 text-sm mb-5">
+        {id
+          ? 'Update the details of your reported item.'
+          : 'Help the campus community find lost belongings.'}
+      </p>
+
+      <form onSubmit={onSubmit} className="space-y-4">
+
+        <div>
+          <label htmlFor="title" className="block text-sm font-medium mb-1">
+            Item title *
+          </label>
+          <input
+            id="title"
+            name="title"
+            type="text"
+            value={form.title}
+            onChange={onChange}
+            placeholder="e.g. Black backpack"
+            required
+            className="w-full border rounded-lg p-2"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="status" className="block text-sm font-medium mb-1">
+            Status
+          </label>
+          <select
+            id="status"
+            name="status"
+            value={form.status}
+            onChange={onChange}
+            className="w-full border rounded-lg p-2"
+          >
+            <option value="lost">Lost</option>
+            <option value="found">Found</option>
+            <option value="claimed">Claimed</option>
+          </select>
+        </div>
+
+        <div>
+          <label htmlFor="category" className="block text-sm font-medium mb-1">
+            Category
+          </label>
+          <select
+            id="category"
+            name="category"
+            value={form.category}
+            onChange={onChange}
+            className="w-full border rounded-lg p-2"
+          >
+            <option value="electronics">Electronics</option>
+            <option value="clothing">Clothing</option>
+            <option value="documents">Documents</option>
+            <option value="accessories">Accessories</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+
+        <div>
+          <label htmlFor="location" className="block text-sm font-medium mb-1">
+            Location (optional)
+          </label>
+          <input
+            id="location"
+            name="location"
+            type="text"
+            value={form.location}
+            onChange={onChange}
+            placeholder="e.g. Library 2nd floor"
+            className="w-full border rounded-lg p-2"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="description" className="block text-sm font-medium mb-1">
+            Description (optional)
+          </label>
+          <textarea
+            id="description"
+            name="description"
+            rows={4}
+            value={form.description}
+            onChange={onChange}
+            placeholder="Describe the item..."
+            className="w-full border rounded-lg p-2"
+          />
+        </div>
+
+        {error && (
+          <div role="alert" className="text-red-600 text-sm">
+            {error}
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <button
+            className="btn"
+            type="submit"
+            disabled={saving}
+          >
+            {saving ? 'Saving...' : id ? 'Save Changes' : 'Report Item'}
+          </button>
+
+          <button
+            className="border rounded-lg px-4 py-2"
+            type="button"
+            onClick={() => nav('/items')}
+          >
+            Cancel
+          </button>
+        </div>
       </form>
     </div>
   )
